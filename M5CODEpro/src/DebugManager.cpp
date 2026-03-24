@@ -5,5 +5,7 @@ void DebugManager::begin(int baud) {
 }
 
 void DebugManager::log(String message) {
-    Serial.println("[DEBUG] " + message);
+    // On commente pour éviter de casser le parsing JSON de l'IHM sur le port série
+    // Ou on l'utilise seulement si on ne debug pas via l'IHM
+    // Serial.println("[DEBUG] " + message);
 }
