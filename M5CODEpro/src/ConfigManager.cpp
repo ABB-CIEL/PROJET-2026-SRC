@@ -9,6 +9,7 @@ void ConfigManager::load() {
     sta_ssid = prefs.getString("sta_ssid", "Nth01");
     sta_password = prefs.getString("sta_pass", "thierryh1");
     udp_port = prefs.getInt("port", 1470);
+    config_port = prefs.getInt("cfg_port", 1000);
     baud_rate = prefs.getInt("baud", 9600);
     
     // Nouveaux paramètres RS232
@@ -37,6 +38,7 @@ void ConfigManager::save() {
     prefs.putString("sta_ssid", sta_ssid);
     prefs.putString("sta_pass", sta_password);
     prefs.putInt("port", udp_port);
+    prefs.putInt("cfg_port", config_port);
     prefs.putInt("baud", baud_rate);
     
     prefs.putInt("db", data_bits);

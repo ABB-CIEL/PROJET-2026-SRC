@@ -57,19 +57,48 @@ String RS232Manager::send(String msg) {
 }
 
 /**
- * @brief Reçoit les données (si disponibles)
+ * @brief Reçoit et vérifie la réponse du journal (ACK)
+ * Attend la balise de fin <E> et vérifie la validité du LRC.
  */
 String RS232Manager::receive() {
-    if (serial->available()) {
-        return serial->readStringUntil('\n');
+    String response = "";
+    unsigned long startTimeout = millis();
+    
+    // Attente active de la réponse avec un timeout de 500ms
+    while (millis() - startTimeout < 500) {
+        while (serial->available() > 0) {
+            char c = serial->read();
+            response += c;
+            
+            // Si on détecte la balise de fin de protocole
+            if (response.endsWith("<E>")) {
+                // Vérification basique du LRC dans la réponse
+                // Format type: <ID01><ACK>XX<E> où XX est le LRC
+                if (response.length() >= 10) {
+                    String content = response.substring(response.indexOf('>') + 1, response.length() - 5);
+                    String receivedLRC = response.substring(response.length() - 5, response.length() - 3);
+                    
+                    // Validation par recalcul du LRC pour garantir l'intégrité
+                    if (calculateLRC(content).equalsIgnoreCase(receivedLRC)) {
+                        return response; // Réponse valide
+                    }
+                }
+                return response;
+            }
+        }
+        delay(10); // Petit délai pour ne pas saturer le CPU
     }
-    return "";
+    
+    return ""; // Timeout : aucune réponse ou trame incomplète
 }
 
 /**
  * @brief Envoie une trame complète Tronios
  */
 String RS232Manager::sendTrame(String msg) {
+    // Nettoyage du tampon de lecture avant l'envoi pour ne pas lire d'anciennes données
+    while(serial->available()) serial->read();
+
     String payload = payloadBase + msg;
     String lrc_hex = calculateLRC(payload);
     String fullFrame = ID + payload + lrc_hex + "<E>";
@@ -78,43 +107,4 @@ String RS232Manager::sendTrame(String msg) {
     // Serial.println("RS232 envoyé : " + fullFrame);  // décommente seulement pour debug
 
     return fullFrame;
-}
-
-/* =============================================
-   === NOUVEAU : SYSTEME D'ANIMATIONS PRÊT POUR MENU ===
-   ============================================= */
-
-void RS232Manager::sendAnimation(int animIndex, String customText) {
-    String command;
-
-    switch (animIndex) {
-        case 0:  command = "1/B = X";                    break; // Scroll Gauche Rapide - Rouge
-        case 1:  command = "4/E = X";                    break; // Scroll Droite - Vert
-        case 2:  command = "2/C = X";                    break; // Scroll Haut - Orange
-        case 3:  command = "9/J = X";                    break; // Scroll Bas - Violet
-        case 4:  command = "10/K = X";                   break; // Effet NEIGE (le plus beau !)
-        case 5:  command = "16/Q = X";                   break; // Vitesse 3 - Jaune
-        case 6:  command = "q = X";                      break; // Vitesse 1 (très lent) - Bleu
-        case 7:  command = "8/I = X";                    break; // Scroll Up
-        case 8:  command = "3/D = X";                    break; // Scroll Left page 3
-        case 9:  command = "5/F = X";                    break; // Scroll Right Orange
-        case 10: command = "0/A = X";                    break; // Effet basique ID 0
-
-        default: command = "1/B = X";                    break;
-    }
-
-    // Si l'utilisateur veut un texte personnalisé
-    if (customText.length() > 0 && animIndex != 4 && animIndex != 10) {
-        command = command.substring(0, 5) + customText;  // remplace le "X" par le texte
-    }
-
-    send(command);
-}
-
-// Version simplifiée pour le menu (texte libre)
-void RS232Manager::sendCustomText(String text, int animIndex) {
-    String base = "1/B = ";           // par défaut scroll gauche
-    if (animIndex == 4) base = "10/K = ";   // effet neige
-    if (animIndex == 1) base = "4/E = ";
-    send(base + text);
 }

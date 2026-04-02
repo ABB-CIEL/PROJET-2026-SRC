@@ -14,6 +14,10 @@ private:
     unsigned long lastActivity; // Pour le screensaver
     bool isDimmed;              // État de la luminosité
 
+    // Témoin d'acquittement RS232
+    bool lastAckSuccess;
+    unsigned long lastAckTime;
+
     // Mode Message (Popup défilable)
     bool isMessageMode;
     String messageText;
@@ -48,6 +52,7 @@ public:
     int getCurrentTab();
     int update();
     void showReceivedMessage(const String& msg);
+    void setAckStatus(bool success);
     void showConnecting(const String& message);
 };
 

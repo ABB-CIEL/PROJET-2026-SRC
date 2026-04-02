@@ -23,10 +23,6 @@ public:
 
     String send(String msg);
     String receive();
-    
-    // Commandes spécifiques
-    void sendAnimation(int animIndex, String customText = "");
-    void sendCustomText(String text, int animIndex);
 };
 
 #endif

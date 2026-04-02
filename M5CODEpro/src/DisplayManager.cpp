@@ -23,6 +23,8 @@ DisplayManager::DisplayManager(ConfigManager& cfg, WifiManager& wifi) : config(c
     lastTouchY = -1;
     totalMessageHeight = 0;
     scanScroll = 0;
+    lastAckSuccess = false;
+    lastAckTime = 0;
 }
 
 void DisplayManager::showSplashScreen() {
@@ -84,6 +86,13 @@ void DisplayManager::drawHeader() {
     M5.Lcd.setTextColor(TFT_WHITE, 0x1082);
     M5.Lcd.setCursor(batX + 36, 11);
     M5.Lcd.printf("%d%%", percent);
+
+    // --- Témoin ACK RS232 (Cercle lumineux temporaire) ---
+    if (lastAckTime > 0 && millis() - lastAckTime < 3000) {
+        uint16_t ackColor = lastAckSuccess ? TFT_GREEN : TFT_RED;
+        M5.Lcd.fillCircle(110, 15, 4, ackColor);
+        M5.Lcd.drawCircle(110, 15, 5, TFT_WHITE);
+    }
 
     // --- Icône WiFi Dynamique ---
     // Zone de nettoyage pour l'icône (avant l'heure)
@@ -720,6 +729,11 @@ void DisplayManager::showReceivedMessage(const String& msg) {
     totalMessageHeight = finalY - 250;
 
     drawMessageScreen();
+}
+
+void DisplayManager::setAckStatus(bool success) {
+    lastAckSuccess = success;
+    lastAckTime = millis();
 }
 
 void DisplayManager::drawMessageScreen() {

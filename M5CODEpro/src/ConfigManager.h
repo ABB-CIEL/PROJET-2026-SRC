@@ -16,6 +16,7 @@ public:
     String sta_ssid;
     String sta_password;
     int udp_port;
+    int config_port;
     int baud_rate;
     
     // Paramètres RS232 ajoutés

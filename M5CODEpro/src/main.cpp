@@ -67,7 +67,7 @@ void toggleWifi() {
         delay(200);
         if (wifiManager.activate()) {
             // On démarre le serveur UDP dans les deux modes (AP et STA) si l'activation a réussi
-            udpManager.begin(config.udp_port, 1000);
+            udpManager.begin(config.udp_port, config.config_port);
         }
     }
     displayManager.refreshUI();
@@ -83,7 +83,7 @@ void reloadWifiConfig() {
         displayManager.showConnecting("Connexion à :\n" + config.sta_ssid);
     }
     if (wifiManager.activate()) {
-        udpManager.begin(config.udp_port, 1000);
+        udpManager.begin(config.udp_port, config.config_port);
     }
     displayManager.refreshUI();
 }
@@ -130,6 +130,8 @@ String processJsonCommand(String jsonInput) {
             res["sta_ssid"] = config.sta_ssid;
             res["sta_password"] = config.sta_password;
             
+            res["udp_port"] = config.udp_port;
+            res["config_port"] = config.config_port;
             res["baud_rate"] = config.baud_rate;
             res["data_bits"] = config.data_bits;
             res["parity"] = config.parity;
@@ -166,11 +168,14 @@ String processJsonCommand(String jsonInput) {
                 }
             }
             
-            // Met à jour les credentials pour le mode concerné (AP ou STA)
+            // Met à jour les paramettre pour le mode concerné (AP ou STA)
             if (doc["ap_ssid"].is<String>())    config.ap_ssid = doc["ap_ssid"].as<String>();
             if (doc["ap_password"].is<String>()) config.ap_password = doc["ap_password"].as<String>();
             if (doc["sta_ssid"].is<String>())    config.sta_ssid = doc["sta_ssid"].as<String>();
             if (doc["sta_password"].is<String>()) config.sta_password = doc["sta_password"].as<String>();
+
+            if (doc["udp_port"].is<int>()) config.udp_port = doc["udp_port"];
+            if (doc["config_port"].is<int>()) config.config_port = doc["config_port"];
 
             if (doc["baud_rate"].is<int>())  config.baud_rate = doc["baud_rate"];
             if (doc["data_bits"].is<int>())  config.data_bits = doc["data_bits"];
@@ -238,7 +243,7 @@ void setup() {
 
     applyWifiConfig();
     if (wifiManager.activate()) {
-        udpManager.begin(config.udp_port, 1000);
+        udpManager.begin(config.udp_port, config.config_port);
     }
 
     displayManager.drawHeader();
@@ -280,7 +285,21 @@ void loop() {
     if (wifiManager.isActive()) {
         String msg;
         if (udpManager.receiveJournal(msg)) {
-            rs232.send(msg);
+            
+            // Envoi standard (Message brut)
+            String frameSent = rs232.send(msg);
+            debug.log("Envoi RS232: " + frameSent);
+
+            // --- Vérification de l'acquittement (ACK) ---
+            String ack = rs232.receive();
+            if (ack.length() > 0) {
+                debug.log("ACK Journal reçu: " + ack);
+                // Optionnel : On pourrait afficher un petit indicateur vert sur l'écran
+            } else {
+                debug.log("ERREUR: Pas d'acquittement du journal !");
+            }
+
+            // Affichage sur le M5
             if (displayManager.getCurrentTab() == 0 || displayManager.getCurrentTab() == 4) {
                 displayManager.showReceivedMessage(msg);
             }
