@@ -1,44 +1,30 @@
-#ifndef WIFI_MANAGER_H
-#define WIFI_MANAGER_H
+#ifndef WIFIMANAGER_H
+#define WIFIMANAGER_H
 
-#include <Arduino.h>
+#include <M5Core2.h>
 #include <WiFi.h>
 
 class WifiManager {
-
 private:
-
-    String ssid;
-    String password;
-    String mode;
-
-    IPAddress local_ip;
-    IPAddress gateway;
-    IPAddress subnet;
-    IPAddress dns;
-
+    String ap_ssid, ap_password;
+    String sta_ssid, sta_password;
+    String mode; // AP, STA, AP_STA
     bool active;
 
+    IPAddress local_ip, gateway, subnet, dns;
+
 public:
-
     WifiManager();
-
-    void setCredentials(String s, String p);
-
+    
+    void setApCredentials(String ssid, String password);
+    void setStaCredentials(String ssid, String password);
     void setMode(String m);
-
     void setNetwork(IPAddress ip, IPAddress gw, IPAddress mask, IPAddress dnsServer);
-
+    
     bool activate();
-
     void deactivate();
-
     bool isActive();
-
     IPAddress getIP();
-
     String getMode();
-
 };
-
 #endif

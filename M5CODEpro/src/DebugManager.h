@@ -6,7 +6,9 @@
 class DebugManager {
 
 public:
+
     void begin(int baud);
+
     void log(String message);
 
 };
