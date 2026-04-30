@@ -1,78 +1,114 @@
+/**
+ * @file UDPManager.cpp
+ * @brief Implémentation de la gestion des flux UDP (Journal et Configuration)
+ * @author Étudiant BTS CIEL IR
+ * @date 2026
+ */
+
 #include "UDPManager.h"
 
-UDPManager::UDPManager() {
+// ============================================================
+// REGION : Constructeur et Initialisation
+// ============================================================
 
-    journalPort = 1470;
-    configPort = 1000;
-
+/** @class CUDPManager
+ *  @brief Gère les communications UDP sur deux ports distincts
+ */
+CUDPManager::CUDPManager()
+{
+    this->journalPort = 1470;
+    this->configPort = 1000;
 }
 
-void UDPManager::begin(int portJournal, int portConfig) {
+/**
+ * @brief Initialise les serveurs UDP
+ * @param portJournal Port pour les messages du journal
+ * @param portConfig Port pour les commandes JSON
+ */
+void CUDPManager::begin(int portJournal, int portConfig)
+{
+    this->journalPort = portJournal;
+    this->configPort = portConfig;
 
-    journalPort = portJournal;
-    configPort = portConfig;
-
-    udpJournal.begin(journalPort);
-    udpConfig.begin(configPort);
-
+    this->udpJournal.begin(this->journalPort);
+    this->udpConfig.begin(this->configPort);
 }
 
-bool UDPManager::receiveJournal(String &msg) {
+// ============================================================
+// REGION : Réception et Envoi
+// ============================================================
 
-    int packetSize = udpJournal.parsePacket();
-
+/**
+ * @brief Reçoit un message destiné au journal
+ * @param msg Référence de la chaîne pour stocker le message
+ * @return true si un message a été reçu
+ */
+bool CUDPManager::receiveJournal(String &msg)
+{
+    int packetSize = this->udpJournal.parsePacket();
     if (!packetSize)
+    {
         return false;
+    }
 
     char buffer[256];
-
-    int len = udpJournal.read(buffer, sizeof(buffer) - 1);
+    int len = this->udpJournal.read(buffer, sizeof(buffer) - 1);
 
     if (len <= 0)
+    {
         return false;
+    }
 
     buffer[len] = 0;
-
     msg = String(buffer);
-
     return true;
 }
 
-bool UDPManager::receiveConfig(String &msg, IPAddress &ip, int &port) {
-
-    int packetSize = udpConfig.parsePacket();
-
+/**
+ * @brief Reçoit une commande de configuration
+ * @param msg Contenu JSON
+ * @param ip IP de l'expéditeur (pour réponse)
+ * @param port Port de l'expéditeur
+ * @return true si reçu
+ */
+bool CUDPManager::receiveConfig(String &msg, IPAddress &ip, int &port)
+{
+    int packetSize = this->udpConfig.parsePacket();
     if (!packetSize)
+    {
         return false;
+    }
 
     char buffer[512];
-
-    int len = udpConfig.read(buffer, sizeof(buffer) - 1);
+    int len = this->udpConfig.read(buffer, sizeof(buffer) - 1);
 
     if (len <= 0)
+    {
         return false;
+    }
 
     buffer[len] = 0;
-
     msg = String(buffer);
-
-    ip = udpConfig.remoteIP();
-    port = udpConfig.remotePort();
-
+    ip = this->udpConfig.remoteIP();
+    port = this->udpConfig.remotePort();
     return true;
 }
 
-void UDPManager::sendConfigResponse(IPAddress ip, int port, String message) {
-
-    udpConfig.beginPacket(ip, port);
-    udpConfig.print(message);
-    udpConfig.endPacket();
-
+/**
+ * @brief Répond à une commande de configuration
+ */
+void CUDPManager::sendConfigResponse(IPAddress ip, int port, String message)
+{
+    this->udpConfig.beginPacket(ip, port);
+    this->udpConfig.print(message);
+    this->udpConfig.endPacket();
 }
 
-void UDPManager::stop() {
-
-    udpJournal.stop();
-    udpConfig.stop();
-
+/**
+ * @brief Arrête les services UDP
+ */
+void CUDPManager::stop()
+{
+    this->udpJournal.stop();
+    this->udpConfig.stop();
 }

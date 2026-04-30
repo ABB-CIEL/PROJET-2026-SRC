@@ -1,65 +1,87 @@
+/**
+ * @file ConfigManager.cpp
+ * @brief Implémentation de la gestion de la configuration (Preferences)
+ * @author Étudiant BTS CIEL IR
+ * @date 2026
+ */
+
 #include "ConfigManager.h"
 
-void ConfigManager::load() {
+// ============================================================
+// REGION : Chargement et Sauvegarde
+// ============================================================
 
-    prefs.begin("wifi", false);
+/**
+ * @brief Charge les paramètres depuis la mémoire non-volatile
+ */
+void CConfigManager::load()
+{
+    this->prefs.begin("wifi", false);
     
-    ap_ssid = prefs.getString("ap_ssid", "M5Journal");
-    ap_password = prefs.getString("ap_pass", "btsciel26");
-    sta_ssid = prefs.getString("sta_ssid", "Nth01");
-    sta_password = prefs.getString("sta_pass", "thierryh1");
-    udp_port = prefs.getInt("port", 1470);
-    config_port = prefs.getInt("cfg_port", 1000);
-    baud_rate = prefs.getInt("baud", 9600);
+    this->ap_ssid = this->prefs.getString("ap_ssid", "M5Journal");
+    this->ap_password = this->prefs.getString("ap_pass", "btsciel26");
+    this->sta_ssid = this->prefs.getString("sta_ssid", "Nth01");
+    this->sta_password = this->prefs.getString("sta_pass", "thierryh1");
+    this->udp_port = this->prefs.getInt("port", 1470);
+    this->config_port = this->prefs.getInt("cfg_port", 1000);
+    this->baud_rate = this->prefs.getInt("baud", 9600);
     
-    // Nouveaux paramètres RS232
-    data_bits = prefs.getInt("db", 8);
-    parity = prefs.getString("par", "N"); // N=None, E=Even, O=Odd
-    stop_bits = prefs.getInt("sb", 1);
-    serial_type = prefs.getString("stype", "RS232"); // RS232, TTL...
+    this->data_bits = this->prefs.getInt("db", 8);
+    this->parity = this->prefs.getString("par", "N");
+    this->stop_bits = this->prefs.getInt("sb", 1);
+    this->serial_type = this->prefs.getString("stype", "RS232");
     
-    wifi_mode = prefs.getString("mode", "AP");
+    this->wifi_mode = this->prefs.getString("mode", "AP");
     
-    // Par défaut : DHCP (0.0.0.0) pour être prêt à l'emploi
-    ip = prefs.getString("ip", "0.0.0.0");
-    gateway = prefs.getString("gw", "0.0.0.0");
-    subnet = prefs.getString("mask", "255.255.255.0");
-    dns = prefs.getString("dns", "8.8.8.8");
+    this->ip = this->prefs.getString("ip", "0.0.0.0");
+    this->gateway = this->prefs.getString("gw", "0.0.0.0");
+    this->subnet = this->prefs.getString("mask", "255.255.255.0");
+    this->dns = this->prefs.getString("dns", "8.8.8.8");
 
-    prefs.end();
+    this->prefs.end();
 }
 
-void ConfigManager::save() {
+/**
+ * @brief Enregistre la configuration actuelle
+ */
+void CConfigManager::save()
+{
+    this->prefs.begin("wifi", false);
 
-    prefs.begin("wifi", false);
-
-    prefs.putString("ap_ssid", ap_ssid);
-    prefs.putString("ap_pass", ap_password);
-    prefs.putString("sta_ssid", sta_ssid);
-    prefs.putString("sta_pass", sta_password);
-    prefs.putInt("port", udp_port);
-    prefs.putInt("cfg_port", config_port);
-    prefs.putInt("baud", baud_rate);
+    this->prefs.putString("ap_ssid", this->ap_ssid);
+    this->prefs.putString("ap_pass", this->ap_password);
+    this->prefs.putString("sta_ssid", this->sta_ssid);
+    this->prefs.putString("sta_pass", this->sta_password);
+    this->prefs.putInt("port", this->udp_port);
+    this->prefs.putInt("cfg_port", this->config_port);
+    this->prefs.putInt("baud", this->baud_rate);
     
-    prefs.putInt("db", data_bits);
-    prefs.putString("par", parity);
-    prefs.putInt("sb", stop_bits);
-    prefs.putString("stype", serial_type);
+    this->prefs.putInt("db", this->data_bits);
+    this->prefs.putString("par", this->parity);
+    this->prefs.putInt("sb", this->stop_bits);
+    this->prefs.putString("stype", this->serial_type);
 
-    prefs.putString("mode", wifi_mode);
-    prefs.putString("ip", ip);
-    prefs.putString("gw", gateway);
-    prefs.putString("mask", subnet);
-    prefs.putString("dns", dns);
+    this->prefs.putString("mode", this->wifi_mode);
+    this->prefs.putString("ip", this->ip);
+    this->prefs.putString("gw", this->gateway);
+    this->prefs.putString("mask", this->subnet);
+    this->prefs.putString("dns", this->dns);
 
-    prefs.end();
+    this->prefs.end();
 }
 
-void ConfigManager::factoryReset() {
+// ============================================================
+// REGION : Maintenance Système
+// ============================================================
 
-    prefs.begin("wifi", false);
-    prefs.clear();
-    prefs.end();
+/**
+ * @brief Réinitialise les paramètres d'usine
+ */
+void CConfigManager::factoryReset()
+{
+    this->prefs.begin("wifi", false);
+    this->prefs.clear();
+    this->prefs.end();
 
     ESP.restart();
 }
