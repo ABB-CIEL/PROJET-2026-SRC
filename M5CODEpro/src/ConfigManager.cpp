@@ -34,6 +34,9 @@ void CConfigManager::load()
     this->wifi_mode = this->prefs.getString("mode", "AP");
     
     this->ip = this->prefs.getString("ip", "0.0.0.0");
+    this->ap_ip = this->prefs.getString("ap_ip", "192.168.4.1");
+    this->ap_gateway = this->prefs.getString("ap_gw", "192.168.4.1");
+    this->ap_subnet = this->prefs.getString("ap_mask", "255.255.255.0");
     this->gateway = this->prefs.getString("gw", "0.0.0.0");
     this->subnet = this->prefs.getString("mask", "255.255.255.0");
     this->dns = this->prefs.getString("dns", "8.8.8.8");
@@ -63,6 +66,9 @@ void CConfigManager::save()
 
     this->prefs.putString("mode", this->wifi_mode);
     this->prefs.putString("ip", this->ip);
+    this->prefs.putString("ap_ip", this->ap_ip);
+    this->prefs.putString("ap_gw", this->ap_gateway);
+    this->prefs.putString("ap_mask", this->ap_subnet);
     this->prefs.putString("gw", this->gateway);
     this->prefs.putString("mask", this->subnet);
     this->prefs.putString("dns", this->dns);

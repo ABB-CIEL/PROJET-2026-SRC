@@ -92,6 +92,7 @@ private:
     void drawSectionTitle(String title, int y);
 
 public:
+    bool needsWifiReload;       ///< Drapeau pour demander au main de recharger le WiFi
     CDisplayManager(CConfigManager& cfg, CWifiManager& wifi);
 
     void showSplashScreen();
@@ -102,7 +103,13 @@ public:
     void setCurrentTab(int tab);
     int getCurrentTab();
     int update();
-    void showReceivedMessage(const String& msg);
+    
+    /**
+     * @brief Affiche un message reçu avec optionnellement sa version brute (chiffrée)
+     * @param msg Texte en clair
+     * @param raw Texte brut original (optionnel)
+     */
+    void showReceivedMessage(const String& msg, const String& raw = "");
     void setAckStatus(bool success);
 
     /**

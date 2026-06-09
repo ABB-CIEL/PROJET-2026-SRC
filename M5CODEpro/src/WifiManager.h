@@ -24,10 +24,14 @@ private:
     String mode;        ///< Mode actuel (AP, STA, AP_STA)
     bool active;        ///< État du module
 
-    IPAddress local_ip; ///< IP statique
-    IPAddress gateway;  ///< Passerelle
-    IPAddress subnet;   ///< Masque
-    IPAddress dns;      ///< Serveur DNS
+    IPAddress ap_ip;    ///< IP du point d'accès
+    IPAddress ap_gw;    ///< Passerelle AP
+    IPAddress ap_mask;  ///< Masque AP
+
+    IPAddress sta_ip;   ///< IP statique client
+    IPAddress sta_gw;   ///< Passerelle client
+    IPAddress sta_mask; ///< Masque client
+    IPAddress sta_dns;  ///< DNS client
 
 public:
     CWifiManager();
@@ -48,9 +52,14 @@ public:
     void setMode(String m);
 
     /**
-     * @brief Configure les paramètres IP statiques
+     * @brief Configure les paramètres IP du Point d'Accès
      */
-    void setNetwork(IPAddress ip, IPAddress gw, IPAddress mask, IPAddress dnsServer);
+    void setApNetwork(IPAddress ip, IPAddress gw, IPAddress mask);
+
+    /**
+     * @brief Configure les paramètres IP de la Station
+     */
+    void setStaNetwork(IPAddress ip, IPAddress gw, IPAddress mask, IPAddress dnsServer);
     
     /**
      * @brief Active le WiFi

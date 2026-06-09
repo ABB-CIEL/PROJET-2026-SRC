@@ -35,6 +35,9 @@ public:
 
     String wifi_mode;   ///< Mode WiFi ("AP", "STA", "AP_STA")
     String ip;          ///< Adresse IP statique (0.0.0.0 si DHCP)
+    String ap_ip;       ///< Adresse IP du Point d'Accès
+    String ap_gateway;  ///< Passerelle du Point d'Accès
+    String ap_subnet;   ///< Masque du Point d'Accès
     String gateway;     ///< Passerelle
     String subnet;      ///< Masque de sous-réseau
     String dns;         ///< Serveur DNS

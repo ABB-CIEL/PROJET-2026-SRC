@@ -8,6 +8,13 @@
 #include "DisplayManager.h"
 #include <time.h>
 
+// --- LOGIQUE DU CLAVIER VIRTUEL (Variables statiques) ---
+static bool _kbActive = false;
+static String _kbInput = "";
+static String _kbSsid = "";
+static int _kbRowOffset = 0; // Pour faire défiler les lettres
+static bool _kbUpper = true;
+
 // --- CONSTANTES THEME ---
 // Couleurs du thème "Pro" (Cyberpunk / Industriel propre)
 #define THEME_BG        TFT_BLACK
@@ -16,6 +23,51 @@
 #define THEME_LABEL     TFT_LIGHTGREY
 #define THEME_BOX       0x18E3  // Gris foncé bleuté
 #define THEME_ROW       0x0841  // Gris très sombre pour alternance
+
+// Map de caractères étendue (48 caractères = 6 pages de 8 touches)
+static const char* KB_MAP_UPPER = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 .!@#$%^&*()";
+static const char* KB_MAP_LOWER = "abcdefghijklmnopqrstuvwxyz0123456789 .!@#$%^&*()";
+
+// Helper pour dessiner une touche
+void drawKey(int x, int y, String label, uint16_t color = 0x18E3) {
+    M5.Lcd.fillRoundRect(x + 2, y + 2, 76, 31, 4, color);
+    M5.Lcd.setTextColor(TFT_WHITE);
+    M5.Lcd.setTextDatum(MC_DATUM);
+    M5.Lcd.drawString(label, x + 40, y + 17, 2);
+    M5.Lcd.setTextDatum(TL_DATUM);
+}
+
+// Rendu du clavier sur l'écran
+void renderKeyboard() {
+    M5.Lcd.fillRect(0, 30, 320, 185, TFT_BLACK);
+    M5.Lcd.setTextColor(TFT_YELLOW);
+    M5.Lcd.drawString("MDP pour: " + _kbSsid.substring(0, 15), 10, 35, 2);
+    
+    // Zone de texte (Masquée par des étoiles)
+    M5.Lcd.drawRect(5, 55, 310, 25, THEME_ACCENT);
+    String masked = "";
+    for(int i=0; i<_kbInput.length(); i++) masked += "*";
+    M5.Lcd.drawString(masked + "|", 15, 60, 2);
+
+    const char* charMap = _kbUpper ? KB_MAP_UPPER : KB_MAP_LOWER;
+    int totalChars = 48;
+
+    // On affiche 8 touches (2 lignes de 4) à la fois
+    int startIdx = _kbRowOffset;
+    for (int i = 0; i < 8; i++) {
+        int idx = startIdx + i;
+        if (idx >= totalChars) break;
+        int r = i / 4;
+        int c = i % 4;
+        drawKey(c * 80, 85 + (r * 35), String(charMap[idx]));
+    }
+    
+    // Barre de contrôles en bas
+    drawKey(0, 155, "MAJ", _kbUpper ? THEME_ACCENT : 0x1082);
+    drawKey(80, 155, "DEL", TFT_RED);
+    drawKey(160, 155, "SUIV.", TFT_BLUE); // Scroll down
+    drawKey(240, 155, "OK", TFT_GREEN);
+}
 
 // ============================================================
 // REGION : Initialisation et Splash Screen
@@ -34,6 +86,7 @@ CDisplayManager::CDisplayManager(CConfigManager& cfg, CWifiManager& wifi) : conf
     this->scanScroll = 0;
     this->lastAckSuccess = false;
     this->lastAckTime = 0;
+    this->needsWifiReload = false;
 }
 
 /**
@@ -314,7 +367,9 @@ void CDisplayManager::showWiFi()
         // --- MODE AP SEULEMENT ---
         this->drawSectionTitle("POINT D'ACCES (LOCAL)", 75);
         this->drawDataRow("Mon SSID", this->config.ap_ssid, y); y += step;
-        this->drawDataRow("Mon IP", this->wifiManager.isActive() ? WiFi.softAPIP().toString() : "...", y); y += step;
+        // Affiche l'IP réelle si active, sinon affiche l'IP configurée
+        String apIP = (this->wifiManager.isActive() && WiFi.softAPIP() != IPAddress(0,0,0,0)) ? WiFi.softAPIP().toString() : this->config.ap_ip;
+        this->drawDataRow("Mon IP", apIP, y); y += step;
         this->drawDataRow("Clients", String(WiFi.softAPgetStationNum()), y); y += step;
         this->drawDataRow("Port UDP", String(this->config.udp_port), y);
     
@@ -333,7 +388,9 @@ void CDisplayManager::showWiFi()
         M5.Lcd.setTextColor(TFT_LIGHTGREY); M5.Lcd.drawString("SSID:", 20, y, 2);
         M5.Lcd.setTextColor(TFT_WHITE);     M5.Lcd.drawString(this->config.ap_ssid, 80, y, 2);
         M5.Lcd.setTextColor(TFT_LIGHTGREY); M5.Lcd.drawString("IP:", 190, y, 2);
-        M5.Lcd.setTextColor(THEME_ACCENT);  M5.Lcd.drawString(WiFi.softAPIP().toString(), 220, y, 2);
+        
+        String apIP = (this->wifiManager.isActive() && WiFi.softAPIP() != IPAddress(0,0,0,0)) ? WiFi.softAPIP().toString() : this->config.ap_ip;
+        M5.Lcd.setTextColor(THEME_ACCENT);  M5.Lcd.drawString(apIP, 220, y, 2);
         
         // BLOC 2 : CLIENT (Bas)
         String staIP = (WiFi.status() == WL_CONNECTED) ? WiFi.localIP().toString() : (this->config.ip != "0.0.0.0" ? this->config.ip : "DHCP...");
@@ -397,11 +454,24 @@ void CDisplayManager::showConfig()
 {
     this->clearContent();
     
-    M5.Lcd.fillRoundRect(10, 60, 300, 35, 6, 0x18E3);
-    M5.Lcd.drawRoundRect(10, 60, 300, 35, 6, THEME_ACCENT);
-    M5.Lcd.setTextColor(THEME_ACCENT);
+    // Bouton PREC
+    M5.Lcd.fillRoundRect(10, 60, 65, 35, 6, 0x18E3);
+    M5.Lcd.drawRoundRect(10, 60, 65, 35, 6, THEME_ACCENT);
+    M5.Lcd.setTextColor(TFT_WHITE);
     M5.Lcd.setTextDatum(MC_DATUM);
-    M5.Lcd.drawString("MODE: " + this->config.wifi_mode + " (CHANGER)", 160, 78, 2);
+    M5.Lcd.drawString("< PREC", 42, 78, 2);
+
+    // Affichage MODE (Box centrale statique)
+    M5.Lcd.fillRoundRect(80, 60, 160, 35, 6, 0x18E3);
+    M5.Lcd.setTextColor(THEME_ACCENT);
+    M5.Lcd.drawString("MODE: " + this->config.wifi_mode, 160, 78, 2);
+
+    // Bouton SUIV
+    M5.Lcd.fillRoundRect(245, 60, 65, 35, 6, 0x18E3);
+    M5.Lcd.drawRoundRect(245, 60, 65, 35, 6, THEME_ACCENT);
+    M5.Lcd.setTextColor(TFT_WHITE);
+    M5.Lcd.drawString("SUIV >", 277, 78, 2);
+    
     M5.Lcd.setTextDatum(TL_DATUM);
 
     int y = 115;
@@ -585,6 +655,11 @@ void CDisplayManager::drawScanList(int n)
 
 void CDisplayManager::refreshUI()
 {
+    if (_kbActive) {
+        renderKeyboard();
+        return;
+    }
+
     if (this->currentTab == 0) this->showWiFi();
     else if (this->currentTab == 1) this->showConfig();
     else if (this->currentTab == 2) this->showStatus();
@@ -608,6 +683,50 @@ int CDisplayManager::getCurrentTab()
 
 int CDisplayManager::update()
 {
+    // --- GESTION DU CLAVIER VIRTUEL ---
+    if (_kbActive) {
+        if (M5.Touch.ispressed()) {
+            Point p = M5.Touch.getPressPoint();
+            if (p.y > 85 && p.y < 155) { // Zone des lettres
+                int col = p.x / 80;
+                int row = (p.y - 85) / 35;
+                int idx = _kbRowOffset + (row * 4) + col;
+                const char* charMap = _kbUpper ? KB_MAP_UPPER : KB_MAP_LOWER;
+                if (idx < 48) {
+                    _kbInput += charMap[idx];
+                    renderKeyboard();
+                    delay(250); // Anti-rebond
+                }
+            } else if (p.y >= 155 && p.y < 190) { // Zone boutons
+                int btn = p.x / 80;
+                if (btn == 0) _kbUpper = !_kbUpper;
+                else if (btn == 1 && _kbInput.length() > 0) _kbInput.remove(_kbInput.length() - 1);
+                else if (btn == 2) { // Défiler les lettres (Page suivante de 8 caractères)
+                    _kbRowOffset += 8;
+                    if (_kbRowOffset >= 48) _kbRowOffset = 0;
+                }
+                else if (btn == 3) { // Validation finale
+                    this->config.sta_ssid = _kbSsid;
+                    this->config.sta_password = _kbInput;
+                    this->config.wifi_mode = "STA"; // Passage auto en mode client
+                    this->config.save();
+                    _kbActive = false;
+                    this->needsWifiReload = true; // Demande au main de reconnecter
+                    this->setCurrentTab(4); // Bascule sur l'onglet Station
+                    this->refreshUI();
+                    return -1;
+                }
+                renderKeyboard();
+                delay(250);
+            } else if (p.y > 215) { // Annuler en cliquant sur les onglets
+                _kbActive = false;
+                refreshUI();
+                return -1;
+            }
+        }
+        return -1;
+    }
+
     if (this->isMessageMode)
     {
         if (M5.Touch.ispressed())
@@ -686,26 +805,40 @@ int CDisplayManager::update()
 
         // --- Gestion BOUTON CONFIGURATION (Onglet 1) ---
         if (currentTab == 1 && p.y >= 60 && p.y <= 95) {
-             // Cycle des modes : AP -> STA -> AP_STA -> AP
-             String m = config.wifi_mode;
-             if (m == "AP") config.wifi_mode = "STA";
-             else if (m == "STA") config.wifi_mode = "AP_STA";
-             else config.wifi_mode = "AP";
-             
-             config.save();
-             
-             // Feedback visuel
-             M5.Lcd.fillRoundRect(10, 60, 300, 35, 6, THEME_ACCENT);
-             M5.Lcd.setTextColor(TFT_BLACK);
-             M5.Lcd.setTextDatum(MC_DATUM);
-             M5.Lcd.drawString("RESEAU: " + config.wifi_mode, 160, 78, 2);
-             delay(200);
-             
-             // On signale au main.cpp qu'il faut recharger le WiFi via le drapeau needReloadWifi
-             // (Note: needReloadWifi est dans main.cpp, ici on force juste un refresh UI en attendant)
-             refreshUI(); 
-             // Pour que le changement soit effectif, il faudra appuyer sur BtnA (Toggle) ou redémarrer, 
-             // ou on peut ajouter une méthode callback. Ici l'utilisateur appuiera sur BtnA pour appliquer.
+            String m = config.wifi_mode;
+            bool changed = false;
+
+            if (p.x >= 10 && p.x <= 75) { // Bouton PREC
+                if (m == "AP") config.wifi_mode = "AP_STA";
+                else if (m == "STA") config.wifi_mode = "AP";
+                else config.wifi_mode = "STA"; // AP_STA -> STA
+                changed = true;
+                
+                // Feedback visuel bouton PREC
+                M5.Lcd.fillRoundRect(10, 60, 65, 35, 6, THEME_ACCENT);
+                M5.Lcd.setTextColor(TFT_BLACK);
+                M5.Lcd.setTextDatum(MC_DATUM);
+                M5.Lcd.drawString("< PREC", 42, 78, 2);
+            }
+            else if (p.x >= 245 && p.x <= 310) { // Bouton SUIV
+                if (m == "AP") config.wifi_mode = "STA";
+                else if (m == "STA") config.wifi_mode = "AP_STA";
+                else config.wifi_mode = "AP"; // AP_STA -> AP
+                changed = true;
+
+                // Feedback visuel bouton SUIV
+                M5.Lcd.fillRoundRect(245, 60, 65, 35, 6, THEME_ACCENT);
+                M5.Lcd.setTextColor(TFT_BLACK);
+                M5.Lcd.setTextDatum(MC_DATUM);
+                M5.Lcd.drawString("SUIV >", 277, 78, 2);
+            }
+
+            if (changed) {
+                config.save();
+                this->needsWifiReload = true; 
+                delay(200);
+                refreshUI(); 
+            }
         }
         
         // Gestion du bouton "Rescan" (Onglet 3 uniquement, Zone Y 190-215)
@@ -718,31 +851,59 @@ int CDisplayManager::update()
                 M5.Lcd.setTextDatum(MC_DATUM);
                 M5.Lcd.drawString("ACTUALISER", 160, 204, 2);
                 
-                // CORRECTION BUG : Attendre que l'utilisateur relâche le doigt
+                // Attendre que l'utilisateur relâche le doigt
                 while(M5.Touch.ispressed()) { M5.update(); delay(10); }
                 
                 this->refreshUI(); // Relance le scan
                 return -1;
             }
 
-            // Zone Liste (Scroll Tactile)
-            if (p.y > 60 && p.y < 190 && this->lastTouchY != -1) {
-                int dy = this->lastTouchY - p.y;
-                // Seuil de sensibilité
-                if (abs(dy) > 5) {
-                    int n = WiFi.scanComplete(); // Récupère le nombre du dernier scan
-                    if (n > 5) {
-                        if (dy > 0) this->scanScroll++;
-                        else this->scanScroll--;
+            // Zone Liste (Scroll Tactile - Correction de l'initialisation)
+            if (p.y > 60 && p.y < 190) {
+                if (this->lastTouchY != -1) {
+                    int dy = this->lastTouchY - p.y;
+                    
+                    // Définition d'une zone de scroll dédiée à droite (CH, SIGNAL, SEC)
+                    bool isScrollZone = (p.x >= 170); 
+                    int scrollThreshold = isScrollZone ? 8 : 15; // Plus sensible dans la zone dédiée
+
+                    if (abs(dy) > scrollThreshold) {
+                        int n = WiFi.scanComplete();
+                        if (n > 5) {
+                            if (dy > 0) this->scanScroll++;
+                            else this->scanScroll--;
+                            
+                            // Bornage (ne pas dépasser le nombre de réseaux)
+                            if (this->scanScroll < 0) this->scanScroll = 0;
+                            if (this->scanScroll > n - 5) this->scanScroll = n - 5;
+                            
+                            this->drawScanList(n);
+                            this->lastTouchY = p.y; // Mise à jour du point de référence
+                            return -1;
+                        }
+                    } else if (!isScrollZone) {
+                        // C'est un clic simple. On n'autorise la sélection QUE sur le SSID (partie gauche)
+                        int rowIndex = (p.y - 62) / 25; // 25 est la hauteur de ligne rowH
+                        int n = WiFi.scanComplete();
+                        int selectedIdx = this->scanScroll + rowIndex;
                         
-                        // Bornage
-                        if (this->scanScroll < 0) this->scanScroll = 0;
-                        if (this->scanScroll > n - 5) this->scanScroll = n - 5;
-                        
-                        this->drawScanList(n);
-                        this->lastTouchY = p.y; // Reset position pour fluidité
-                        return -1;
+                        if (selectedIdx >= 0 && selectedIdx < n) {
+                            // Au lieu de connecter directement, on active le clavier virtuel
+                            _kbSsid = WiFi.SSID(selectedIdx);
+                            _kbInput = ""; // Réinitialise l'entrée du clavier
+                            _kbActive = true; // Active le clavier
+                            _kbRowOffset = 0; // Réinitialise le défilement du clavier
+                            
+                            // Feedback visuel (flash vert sur la ligne)
+                            M5.Lcd.drawRect(0, 62 + (rowIndex * 25), 310, 25, TFT_GREEN);
+                            delay(200);
+                            this->refreshUI(); // Affiche le clavier immédiatement
+                            return -1; // Arrête le traitement de l'update pour cette frame
+                        }
                     }
+                } else {
+                    // Premier contact : on initialise la position de référence
+                    this->lastTouchY = p.y;
                 }
             }
         }
@@ -760,11 +921,17 @@ int CDisplayManager::update()
 // ==========================================
 // === AFFICHAGE MESSAGES / POPUPS ===
 // ==========================================
-void CDisplayManager::showReceivedMessage(const String& msg)
+void CDisplayManager::showReceivedMessage(const String& msg, const String& raw)
 {
     // Active le mode message plein écran avec défilement
     this->isMessageMode = true;
-    this->messageText = msg;
+
+    if (raw.length() > 0) {
+        this->messageText = "MESSAGE CHIFFRE:\n" + raw + "\n\nMESSAGE DECHIFFRE:\n" + msg;
+    } else {
+        this->messageText = msg;
+    }
+
     this->messageScroll = 0;
     this->lastTouchY = -1;
 

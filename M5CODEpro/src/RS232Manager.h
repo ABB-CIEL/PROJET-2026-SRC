@@ -22,6 +22,12 @@ private:
     String payloadBase;     ///< En-tête de protocole fixe
     int baudRate;           ///< Vitesse de transmission
 
+    // Outils de déchiffrement (Intégration E1)
+    String hexToString(String hex);
+    String dechiffrerCesar(String data, int decalage);
+    String dechiffrerXOR(String data, uint8_t key);
+    long long powMod(long long base, long long exp, long long mod);
+
     /**
      * @brief Calcule le checksum LRC
      * @param data Chaîne de données
@@ -60,6 +66,13 @@ public:
 
     String send(String msg);
     String receive();
+
+    /**
+     * @brief Décode une trame provenant de l'IHM E1 (Qt)
+     * @param trame Trame brute avec en-tête [ALGO:...]
+     * @return Message déchiffré en clair
+     */
+    String processE1Frame(String trame);
 };
 
-#endif
+#endif  

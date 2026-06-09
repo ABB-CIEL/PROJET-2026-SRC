@@ -42,6 +42,12 @@ bool needReloadWifi = false; // Drapeau pour redémarrage différé du WiFi
 void applyWifiConfig()
 {
     wifiManager.setApCredentials(config.ap_ssid, config.ap_password);
+    IPAddress apIp, apGw, apMask;
+    apIp.fromString(config.ap_ip);
+    apGw.fromString(config.ap_gateway);
+    apMask.fromString(config.ap_subnet);
+    wifiManager.setApNetwork(apIp, apGw, apMask);
+
     wifiManager.setStaCredentials(config.sta_ssid, config.sta_password);
     wifiManager.setMode(config.wifi_mode);
     
@@ -50,7 +56,7 @@ void applyWifiConfig()
     gw.fromString(config.gateway);
     mask.fromString(config.subnet);
     dns.fromString(config.dns);
-    wifiManager.setNetwork(ip, gw, mask, dns);
+    wifiManager.setStaNetwork(ip, gw, mask, dns);
 }
 
 /**
@@ -152,10 +158,37 @@ String processJsonCommand(String jsonInput)
             res["stop_bits"] = config.stop_bits;
             res["serial_type"] = config.serial_type;
 
-            res["ip"] = config.ip;
-            res["gateway"] = config.gateway;
-            res["mask"] = config.subnet;
-            res["dns"] = config.dns;
+            if (wifiManager.isActive())
+            {
+                if (config.wifi_mode == "AP")
+                {
+                    res["ip"] = WiFi.softAPIP().toString();
+                    res["ap_ip"] = WiFi.softAPIP().toString();
+                    res["sta_ip"] = "0.0.0.0";
+                    res["gateway"] = "0.0.0.0";
+                    res["mask"] = "255.255.255.0";
+                    res["dns"] = "0.0.0.0";
+                }
+                else // Mode STA ou AP_STA
+                {
+                    res["ip"] = WiFi.localIP().toString();
+                    res["sta_ip"] = WiFi.localIP().toString();
+                    res["ap_ip"] = (config.wifi_mode == "AP_STA") ? WiFi.softAPIP().toString() : "0.0.0.0";
+                    res["gateway"] = WiFi.gatewayIP().toString();
+                    res["mask"] = WiFi.subnetMask().toString();
+                    res["dns"] = WiFi.dnsIP(0).toString();
+                }
+            }
+            else
+            {
+                res["ip"] = config.ip;
+                res["ap_ip"] = config.ap_ip;
+                res["ap_gateway"] = config.ap_gateway;
+                res["ap_mask"] = config.ap_subnet;
+                res["gateway"] = config.gateway;
+                res["mask"] = config.subnet;
+                res["dns"] = config.dns;
+            }
             res["mac"] = WiFi.macAddress();
         }
         else if (cmd == "reboot")
@@ -229,9 +262,28 @@ String processJsonCommand(String jsonInput)
             if (doc["stop_bits"].is<int>())  config.stop_bits = doc["stop_bits"];
             if (doc["serial_type"].is<String>()) config.serial_type = doc["serial_type"].as<String>();
             
-            if (doc["ip"].is<String>())      config.ip = doc["ip"].as<String>();
-            if (doc["mask"].is<String>())    config.subnet = doc["mask"].as<String>();
-            if (doc["gw"].is<String>())      config.gateway = doc["gw"].as<String>();
+            if (doc["ip"].is<String>()) {
+                config.ip = doc["ip"].as<String>();
+                // Si on est en mode AP, on synchronise l'IP AP pour faciliter l'utilisation
+                if (config.wifi_mode == "AP") config.ap_ip = config.ip;
+            }
+            if (doc["ap_ip"].is<String>())   config.ap_ip = doc["ap_ip"].as<String>();
+            
+            if (doc["ap_mask"].is<String>()) config.ap_subnet = doc["ap_mask"].as<String>();
+            if (doc["ap_gw"].is<String>())   config.ap_gateway = doc["ap_gw"].as<String>();
+            
+            if (doc["mask"].is<String>()) {
+                config.subnet = doc["mask"].as<String>();
+                // Synchronisation du masque en mode AP
+                if (config.wifi_mode == "AP") config.ap_subnet = config.subnet;
+            }
+            
+            if (doc["gw"].is<String>()) {
+                config.gateway = doc["gw"].as<String>();
+                // Synchronisation de la passerelle en mode AP
+                if (config.wifi_mode == "AP") config.ap_gateway = config.gateway;
+            }
+            
             if (doc["dns"].is<String>())     config.dns = doc["dns"].as<String>();
 
             config.save();
@@ -256,13 +308,14 @@ void setup()
     M5.Axp.SetLed(false);           
 
     displayManager.showSplashScreen();
-    debug.begin(115200);
+    debug.begin(115200); // Doit correspondre à l'IHM Qt
 
     Serial.end();                   
     delay(2000);                    
 
-    Serial.begin(115200);           
     Serial.setRxBufferSize(4096);
+    Serial.begin(115200); // Doit être après setRxBufferSize sur ESP32
+    Serial.setTimeout(150); // Augmenté à 150ms pour laisser le temps aux longues trames d'arriver
 
     for (int i = 0; i < 50; i++)
     {
@@ -272,12 +325,6 @@ void setup()
         }
         delay(30);
     }
-
-    Serial.println("\n\n=== M5 READY ===");
-    delay(100);
-    Serial.println("M5 READY");
-    delay(100);
-    Serial.println("M5 READY");
 
     config.load();
     
@@ -301,9 +348,10 @@ void loop()
 {
     M5.update();
 
-    if (needReloadWifi)
+    if (needReloadWifi || displayManager.needsWifiReload)
     {
         needReloadWifi = false;
+        displayManager.needsWifiReload = false;
         reloadWifiConfig();
     }
 
@@ -324,12 +372,52 @@ void loop()
 
     if (Serial.available() > 0)
     {
-        String serialInput = Serial.readStringUntil('\n');
+        // Utilisation de readString() car l'IHM Qt n'envoie pas de \n
+        String serialInput = Serial.readString(); 
         serialInput.trim();
-        if (serialInput.length() > 0 && serialInput[0] == '{')
+        if (serialInput.length() > 0 && serialInput.startsWith("{"))
         {
             String response = processJsonCommand(serialInput);
             Serial.println(response);
+        }
+        else if (serialInput.length() > 0 && serialInput.indexOf('[') != -1)
+        {
+            // Gestion de plusieurs trames reçues simultanément dans le buffer
+            int startIdx = 0;
+            while ((startIdx = serialInput.indexOf('[', startIdx)) != -1) {
+                // On cherche la fin de la trame actuelle (soit le prochain '[', soit la fin de chaîne)
+                int nextStart = serialInput.indexOf('[', startIdx + 1);
+                String trame = (nextStart == -1) ? serialInput.substring(startIdx) : serialInput.substring(startIdx, nextStart);
+                startIdx = (nextStart == -1) ? serialInput.length() : nextStart;
+
+                // Déchiffrement de la trame isolée
+                String messageClair = rs232.processE1Frame(trame);
+                
+                if (messageClair.length() > 0) {
+                    // Si le message déchiffré commence par <ID, c'est une trame complète déjà formatée
+                    if (messageClair.startsWith("<ID")) {
+                        // 1. Envoyer DIRECTEMENT au journal sans ré-encapsuler
+                        SerialRS232.print(messageClair);
+                        
+                        // 2. Extraire uniquement le texte pour un affichage propre sur le M5
+                        int lastTagEnd = messageClair.lastIndexOf('>', messageClair.length() - 6);
+                        if (lastTagEnd != -1) {
+                            String textOnly = messageClair.substring(lastTagEnd + 1, messageClair.length() - 5);
+                            // On passe la trame brute et le texte déchiffré
+                            displayManager.showReceivedMessage(textOnly, trame);
+                        } else {
+                            displayManager.showReceivedMessage(messageClair, trame);
+                        }
+                        
+                        displayManager.setAckStatus(true);
+                    } 
+                    else {
+                        // Message simple : on l'encapsule normalement
+                        rs232.send(messageClair);
+                        displayManager.showReceivedMessage(messageClair, trame);
+                    }
+                }
+            }
         }
     }
 
@@ -339,12 +427,12 @@ void loop()
         if (udpManager.receiveJournal(msg))
         {
             String frameSent = rs232.send(msg);
-            debug.log("Envoi RS232: " + frameSent);
+            // debug.log("Envoi RS232: " + frameSent);
 
             String ack = rs232.receive();
             if (ack.length() > 0)
             {
-                debug.log("ACK Journal reçu: " + ack);
+                // debug.log("ACK Journal reçu: " + ack);
             }
             else
             {

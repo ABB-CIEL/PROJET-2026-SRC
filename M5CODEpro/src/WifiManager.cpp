@@ -67,12 +67,19 @@ void CWifiManager::setMode(String m)
  * @param mask Masque de sous-réseau
  * @param dnsServer Serveur DNS
  */
-void CWifiManager::setNetwork(IPAddress ip, IPAddress gw, IPAddress mask, IPAddress dnsServer)
+void CWifiManager::setApNetwork(IPAddress ip, IPAddress gw, IPAddress mask)
 {
-    this->local_ip = ip;
-    this->gateway = gw;
-    this->subnet = mask;
-    this->dns = dnsServer;
+    this->ap_ip = ip;
+    this->ap_gw = gw;
+    this->ap_mask = mask;
+}
+
+void CWifiManager::setStaNetwork(IPAddress ip, IPAddress gw, IPAddress mask, IPAddress dnsServer)
+{
+    this->sta_ip = ip;
+    this->sta_gw = gw;
+    this->sta_mask = mask;
+    this->sta_dns = dnsServer;
 }
 
 // ============================================================
@@ -94,17 +101,15 @@ bool CWifiManager::activate()
         WiFi.mode(this->mode == "AP_STA" ? WIFI_AP_STA : WIFI_AP);
         delay(100);
 
-        if (this->ap_password.length() > 0 && this->ap_password.length() < 8)
+        if (this->ap_ip != IPAddress(0, 0, 0, 0))
         {
-            return false;
+            WiFi.softAPConfig(this->ap_ip, this->ap_gw, this->ap_mask);
         }
 
-        if (this->local_ip != IPAddress(0, 0, 0, 0))
-        {
-            WiFi.softAPConfig(this->local_ip, this->gateway, this->subnet);
-        }
-
-        const char* pass = this->ap_password.length() > 0 ? this->ap_password.c_str() : "";
+        // Le mot de passe doit faire au moins 8 caractères pour le WPA2.
+        // Sinon, on crée un réseau ouvert (NULL) pour éviter que l'AP ne refuse de démarrer.
+        const char* pass = (this->ap_password.length() >= 8) ? this->ap_password.c_str() : NULL;
+        
         if (!WiFi.softAP(this->ap_ssid.c_str(), pass))
         {
             return false;
@@ -126,9 +131,9 @@ bool CWifiManager::activate()
         WiFi.setHostname("M5JournalPRO");
         WiFi.setAutoReconnect(true);
 
-        if (this->local_ip != IPAddress(0, 0, 0, 0))
+        if (this->sta_ip != IPAddress(0, 0, 0, 0))
         {
-             WiFi.config(this->local_ip, this->gateway, this->subnet, this->dns);
+             WiFi.config(this->sta_ip, this->sta_gw, this->sta_mask, this->sta_dns);
         }
         else
         {
@@ -151,11 +156,15 @@ bool CWifiManager::activate()
 
         if (WiFi.status() != WL_CONNECTED)
         {
-            return false;
+            // En mode hybride, on ne bloque pas tout si la partie STA échoue.
+            // Cela permet de garder l'AP actif pour corriger la config.
+            if (this->mode == "STA") return false;
         }
     }
 
-    this->active = true;
+    // Le module est considéré actif si l'AP est lancé OU si le STA est connecté.
+    this->active = (this->mode == "AP") || (this->mode == "AP_STA") || (WiFi.status() == WL_CONNECTED);
+    
     return true;
 }
 

@@ -132,6 +132,101 @@ String CRS232Manager::receive()
     return "";
 }
 
+// ============================================================
+// REGION : Déchiffrement (Intégration E1)
+// ============================================================
+
+String CRS232Manager::hexToString(String hex) {
+    String result = "";
+    hex.trim();
+    hex.replace(" ", "");
+    hex.replace("\n", "");
+    hex.replace("\r", "");
+    for (int i = 0; i < (int)hex.length(); i += 2) {
+        if (i + 2 <= (int)hex.length()) {
+            String hexByte = hex.substring(i, i + 2);
+            char byteChar = (char)strtol(hexByte.c_str(), NULL, 16);
+            result += byteChar;
+        }
+    }
+    return result;
+}
+
+String CRS232Manager::dechiffrerCesar(String data, int decalage) {
+    String result = "";
+    for (int i = 0; i < (int)data.length(); i++) {
+        unsigned char c = data[i];
+        c = (c - decalage + 256) % 256;
+        result += (char)c;
+    }
+    return result;
+}
+
+String CRS232Manager::dechiffrerXOR(String data, uint8_t key) {
+    String result = "";
+    for (int i = 0; i < (int)data.length(); i++) {
+        unsigned char c = data[i];
+        c = c ^ key;
+        result += (char)c;
+    }
+    return result;
+}
+
+long long CRS232Manager::powMod(long long base, long long exp, long long mod) {
+    long long res = 1;
+    base = base % mod;
+    while (exp > 0) {
+        if (exp % 2 == 1) res = (res * base) % mod;
+        base = (base * base) % mod;
+        exp = exp / 2;
+    }
+    return res;
+}
+
+String CRS232Manager::processE1Frame(String trame) {
+    int debut = trame.indexOf('[');
+    int fin = trame.indexOf(']');
+    
+    if (debut >= 0 && fin > debut) {
+        String enTete = trame.substring(debut, fin + 1);
+        String donnees = trame.substring(fin + 1);
+        donnees.trim();
+
+        if (enTete.startsWith("[CESAR:")) {
+            int split = enTete.indexOf(':');
+            int decal = enTete.substring(split + 1, fin).toInt();
+            // César est encodé une seule fois en hex par l'IHM
+            return dechiffrerCesar(hexToString(donnees), decal);
+        } 
+        else if (enTete.startsWith("[XOR:")) {
+            int split = enTete.indexOf(':');
+            String hexKey = enTete.substring(split + 1, fin);
+            uint8_t key = (uint8_t)strtol(hexKey.c_str(), NULL, 16);
+            
+            // On convertit l'hexadécimal en octets, puis on applique le XOR
+            return dechiffrerXOR(hexToString(donnees), key);
+        }
+        else if (enTete.startsWith("[RSA:")) {
+            // RSA utilise des blocs hex de 4 caractères dans l'IHM Qt
+            long long n = 8357;
+            long long d = 4663; // Clé privée correspondant à e=7
+            String result = "";
+            donnees.replace(" ", "");
+            
+            for (int i = 0; i + 4 <= (int)donnees.length(); i += 4) {
+                String part = donnees.substring(i, i + 4);
+                unsigned short c = (unsigned short)strtol(part.c_str(), NULL, 16);
+                result += (char)powMod(c, d, n);
+            }
+            return result;
+        }
+        else if (enTete.startsWith("[CLAIR]")) {
+            return donnees;
+        }
+    }
+    return trame; // Retourne brut si pas d'en-tête
+}
+
 /**
  * @brief Encapsule les données dans le format de trame Tronios
  * @param msg Texte à encapsuler
